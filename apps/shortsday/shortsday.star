@@ -1,8 +1,26 @@
 load("encoding/json.star", "json")
 load("http.star", "http")
 load("render.star", "render")
+load("schema.star", "schema")
 
-THRESHOLD_F = 80
+def get_schema():
+    return schema.Schema(
+        version = "1",
+        fields = [
+            schema.Text(
+                id = "zip_code",
+                name = "ZIP code",
+                desc = "US ZIP code for today's forecast",
+                default = "10001",
+            ),
+            schema.Text(
+                id = "threshold_f",
+                name = "Shorts temperature",
+                desc = "Temperature in Fahrenheit at or above which it is a shorts day",
+                default = "80",
+            ),
+        ],
+    )
 
 def _fail(msg):
     fail("shortsday: " + msg)
@@ -10,7 +28,7 @@ def _fail(msg):
 def _get_lat_lon(zip_code):
     # Free geocoding by postal code.
     geo_url = "https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=en&format=json" % zip_code
-    geo_resp = http.get(geo_url)
+    geo_resp = http.get(geo_url, ttl_seconds = 86400)
 
     if geo_resp.status_code != 200:
         _fail("geocoding request failed: %d" % geo_resp.status_code)
@@ -26,7 +44,7 @@ def _get_lat_lon(zip_code):
 
 def _get_today_high_f(lat, lon):
     weather_url = "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&daily=temperature_2m_max&temperature_unit=fahrenheit&forecast_days=1&timezone=auto" % (lat, lon)
-    weather_resp = http.get(weather_url)
+    weather_resp = http.get(weather_url, ttl_seconds = 1800)
 
     if weather_resp.status_code != 200:
         _fail("forecast request failed: %d" % weather_resp.status_code)
@@ -44,20 +62,28 @@ def _get_today_high_f(lat, lon):
 
     return highs[0]
 
-def _answer_text(high_f):
-    if high_f >= THRESHOLD_F:
+def _answer_text(is_shorts_day):
+    if is_shorts_day:
         return "Yes"
     return "No"
 
+def _threshold_text(value):
+    try:
+        return int(value)
+    except:
+        _fail("threshold_f must be a whole number")
+
 def main(config):
     zip_code = config.get("zip_code", "10001").strip()
+    threshold_f = _threshold_text(config.get("threshold_f", "80").strip())
 
     if zip_code == "":
         _fail("ZIP code is required")
 
     lat, lon = _get_lat_lon(zip_code)
     high_f = _get_today_high_f(lat, lon)
-    answer = _answer_text(high_f)
+    answer = _answer_text(high_f >= threshold_f)
+    temp_text = "%dF" % int(round(high_f))
 
     return render.Root(
         child = render.Column(
@@ -72,6 +98,11 @@ def main(config):
                 ),
                 render.Text(
                     answer,
+                    font = "tb-8",
+                    color = "#FFFFFF",
+                ),
+                render.Text(
+                    temp_text,
                     font = "tb-8",
                     color = "#FFFFFF",
                 ),
