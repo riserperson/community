@@ -10,12 +10,14 @@ def get_schema():
             schema.Text(
                 id = "zip_code",
                 name = "ZIP code",
+                icon = "locationDot",
                 desc = "US ZIP code for today's forecast",
                 default = "10001",
             ),
             schema.Text(
                 id = "threshold_f",
                 name = "Shorts temperature",
+                icon = "temperatureHigh",
                 desc = "Temperature in Fahrenheit at or above which it is a shorts day",
                 default = "80",
             ),
@@ -26,7 +28,6 @@ def _fail(msg):
     fail("shortsday: " + msg)
 
 def _get_lat_lon(zip_code):
-    # Free geocoding by postal code.
     geo_url = "https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=en&format=json" % zip_code
     geo_resp = http.get(geo_url, ttl_seconds = 86400)
 
@@ -68,10 +69,10 @@ def _answer_text(is_shorts_day):
     return "No"
 
 def _threshold_text(value):
-    try:
-        return int(value)
-    except:
-        _fail("threshold_f must be a whole number")
+    if value == "":
+        _fail("threshold_f is required")
+
+    return int(value)
 
 def main(config):
     zip_code = config.get("zip_code", "10001").strip()
@@ -83,7 +84,7 @@ def main(config):
     lat, lon = _get_lat_lon(zip_code)
     high_f = _get_today_high_f(lat, lon)
     answer = _answer_text(high_f >= threshold_f)
-    temp_text = "%dF" % int(round(high_f))
+    temp_text = "%dF" % int(high_f + 0.5)
 
     return render.Root(
         child = render.Column(
